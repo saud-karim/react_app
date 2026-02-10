@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "react_app",
-    "slug": "react_app",
-    "version": "1.0.0",
+    "name": "EDARA",
+    "slug": "edara-app",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.edara.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +22,18 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.edara.app",
+      "versionCode": 3
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e176357c-c9a8-46aa-b772-ae9c13d1488e"
+      }
+    },
+    "owner": "saudy"
   }
 }
