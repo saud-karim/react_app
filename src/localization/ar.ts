@@ -83,6 +83,7 @@ export default {
     views: 'المشاهدات',
     general: 'عام',
     attachments: 'المرفقات',
+    document: 'مستند',
 
     // Deals
     dealDetails: 'تفاصيل العرض',

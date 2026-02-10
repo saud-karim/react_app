@@ -8,6 +8,9 @@ import {
     Image,
     TouchableOpacity,
     Dimensions,
+    Modal,
+    Linking,
+    Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Video, ResizeMode } from 'expo-av';
@@ -28,13 +31,27 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
     const { newsId } = route.params;
     const [news, setNews] = useState<News | null>(null);
     const [isLoading, setIsLoading] = useState(true);
-    const [playingVideo, setPlayingVideo] = useState<number | null>(null);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
+    const [playingVideo, setPlayingVideo] = useState<number | null>(null);
+    const [fullscreenVideo, setFullscreenVideo] = useState<number | null>(null);
+    const [videoStatus, setVideoStatus] = useState<any>({});
+    const [isVideoPlaying, setIsVideoPlaying] = useState(false);
     const scrollViewRef = React.useRef<ScrollView>(null);
+    const videoRef = React.useRef<Video>(null);
+
+    const { width } = Dimensions.get('window');
 
     useEffect(() => {
         loadNews();
     }, [newsId]);
+
+    useEffect(() => {
+        if (playingVideo !== null) {
+            setIsVideoPlaying(true);
+        } else {
+            setIsVideoPlaying(false);
+        }
+    }, [playingVideo]);
 
     const loadNews = async () => {
         try {
@@ -56,16 +73,68 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
     const handleScrollLeft = () => {
         if (currentImageIndex > 0 && scrollViewRef.current) {
             const newIndex = currentImageIndex - 1;
-            scrollViewRef.current.scrollTo({ x: newIndex * Dimensions.get('window').width, animated: true });
+            scrollViewRef.current.scrollTo({ x: newIndex * width, animated: true });
             setCurrentImageIndex(newIndex);
         }
     };
 
     const handleScrollRight = () => {
-        if (news && currentImageIndex < news.images.length - 1 && scrollViewRef.current) {
+        if (news && currentImageIndex < (news.images.length + (news.videos ? news.videos.length : 0)) - 1 && scrollViewRef.current) {
             const newIndex = currentImageIndex + 1;
-            scrollViewRef.current.scrollTo({ x: newIndex * Dimensions.get('window').width, animated: true });
+            scrollViewRef.current.scrollTo({ x: newIndex * width, animated: true });
             setCurrentImageIndex(newIndex);
+        }
+    };
+
+    const handlePlayPause = async () => {
+        if (videoRef.current) {
+            if (isVideoPlaying) {
+                await videoRef.current.pauseAsync();
+                setIsVideoPlaying(false);
+            } else {
+                await videoRef.current.playAsync();
+                setIsVideoPlaying(true);
+            }
+        }
+    };
+
+    const handleSeek = async (position: number) => {
+        console.log('Seek pressed!', position);
+        if (videoRef.current && videoStatus.isLoaded && !isNaN(position) && position >= 0 && position <= 100) {
+            const seekPosition = (position / 100) * (videoStatus.durationMillis || 0);
+            console.log('Seeking to:', seekPosition);
+            await videoRef.current.setPositionAsync(seekPosition);
+        }
+    };
+
+    const formatTime = (milliseconds: number) => {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    const handleOpenDocument = async (documentUrl: string, documentTitle: string) => {
+        try {
+            const supported = await Linking.canOpenURL(documentUrl);
+            if (supported) {
+                await Linking.openURL(documentUrl);
+            } else {
+                Alert.alert(
+                    t('error'),
+                    i18n.language === 'ar' 
+                        ? 'لا يمكن فتح هذا الملف على جهازك'
+                        : 'Cannot open this file on your device'
+                );
+            }
+        } catch (error) {
+            console.error('Error opening document:', error);
+            Alert.alert(
+                t('error'),
+                i18n.language === 'ar' 
+                    ? 'حدث خطأ أثناء فتح الملف'
+                    : 'An error occurred while opening the file'
+            );
         }
     };
 
@@ -94,8 +163,8 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                 showMenu={false}
             />
             <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-                {/* Hero Image Section with Horizontal Scroll */}
-                {news.images && news.images.length > 0 && (
+                {/* Hero Media Section with Horizontal Scroll (Images + Videos) */}
+                {news.images && (news.images.length > 0 || (news.videos && news.videos.length > 0)) && (
                     <View style={styles.heroImageContainer}>
                         <ScrollView 
                             ref={scrollViewRef}
@@ -104,13 +173,14 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                             showsHorizontalScrollIndicator={false}
                             style={styles.heroScrollView}
                             onScroll={(e) => {
-                                const index = Math.round(e.nativeEvent.contentOffset.x / Dimensions.get('window').width);
+                                const index = Math.round(e.nativeEvent.contentOffset.x / width);
                                 setCurrentImageIndex(index);
                             }}
                             scrollEventThrottle={16}
                         >
-                            {news.images.map((image, index) => (
-                                <View key={image.id} style={styles.heroImageWrapper}>
+                            {/* Render Images */}
+                            {news.images.map((image) => (
+                                <View key={`image-${image.id}`} style={styles.heroImageWrapper}>
                                     <Image
                                         source={{ uri: image.url }}
                                         style={styles.heroImage}
@@ -122,10 +192,124 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                                     />
                                 </View>
                             ))}
+                            
+                            {/* Render Videos */}
+                            {news.videos && news.videos.map((video) => (
+                                <View key={`video-${video.id}`} style={styles.heroImageWrapper}>
+                                    {playingVideo === video.id ? (
+                                        <>
+                                            <Video
+                                                ref={videoRef}
+                                                source={{ uri: video.url }}
+                                                style={styles.videoPlayer}
+                                                resizeMode={ResizeMode.CONTAIN}
+                                                shouldPlay={true}
+                                                isLooping={false}
+                                                onPlaybackStatusUpdate={(status) => {
+                                                    setVideoStatus(status);
+                                                    if (status.isLoaded) {
+                                                        setIsVideoPlaying(status.isPlaying || false);
+                                                        if (status.didJustFinish) {
+                                                            setPlayingVideo(null);
+                                                            setIsVideoPlaying(false);
+                                                        }
+                                                    }
+                                                }}
+                                            />
+                                            
+                                            {/* Custom Video Controls - Outside video container */}
+                                            <View style={styles.videoControlsOverlay}>
+                                                {/* Play/Pause Button */}
+                                                <TouchableOpacity 
+                                                    style={styles.playPauseButton}
+                                                    onPress={handlePlayPause}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Icon 
+                                                        name={isVideoPlaying ? "pause" : "play"} 
+                                                        size={24} 
+                                                        color={theme.colors.background.primary} 
+                                                    />
+                                                </TouchableOpacity>
+                                                
+                                                {/* Progress Bar */}
+                                                {videoStatus.isLoaded && (
+                                                    <View style={styles.progressContainer}>
+                                                        <Text style={styles.timeText}>
+                                                            {formatTime(videoStatus.positionMillis || 0)}
+                                                        </Text>
+                                                        <TouchableOpacity 
+                                                            style={styles.progressBar}
+                                                            onPress={(e) => {
+                                                                const event = e.nativeEvent;
+                                                                console.log('Progress bar pressed:', event);
+                                                                
+                                                                // Get the progress bar width from layout
+                                                                e.currentTarget.measure((x, y, width, height, pageX, pageY) => {
+                                                                    const touchX = event.pageX - pageX;
+                                                                    const percentage = Math.max(0, Math.min(100, (touchX / width) * 100));
+                                                                    console.log('Calculated percentage:', percentage);
+                                                                    handleSeek(percentage);
+                                                                });
+                                                            }}
+                                                            activeOpacity={0.7}
+                                                        >
+                                                            <View 
+                                                                style={[
+                                                                    styles.progressFill,
+                                                                    { 
+                                                                        width: `${((videoStatus.positionMillis || 0) / (videoStatus.durationMillis || 1)) * 100}%` 
+                                                                    }
+                                                                ]} 
+                                                            />
+                                                        </TouchableOpacity>
+                                                        <Text style={styles.timeText}>
+                                                            {formatTime(videoStatus.durationMillis || 0)}
+                                                        </Text>
+                                                    </View>
+                                                )}
+                                                
+                                                {/* Fullscreen Button */}
+                                                <TouchableOpacity 
+                                                    style={styles.fullscreenButton}
+                                                    onPress={() => setFullscreenVideo(video.id)}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Icon name="maximize" size={20} color={theme.colors.background.primary} />
+                                                </TouchableOpacity>
+                                            </View>
+                                        </>
+                                    ) : (
+                                        <TouchableOpacity 
+                                            style={styles.videoContainer}
+                                            onPress={() => {
+                                                setPlayingVideo(video.id);
+                                                setIsVideoPlaying(true);
+                                            }}
+                                            activeOpacity={0.8}
+                                        >
+                                            <View style={styles.videoPlaceholder}>
+                                                <Icon name="play" size={48} color={theme.colors.background.primary} />
+                                            </View>
+                                            {video.title && (
+                                                <View style={styles.videoTitleOverlay}>
+                                                    <Text style={styles.videoTitleText} numberOfLines={2}>
+                                                        {video.title}
+                                                    </Text>
+                                                </View>
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
+                                    <LinearGradient
+                                        colors={['transparent', 'rgba(0,0,0,0.7)']}
+                                        style={styles.heroGradient}
+                                    />
+                                </View>
+                            ))}
                         </ScrollView>
                         
-                        {/* Navigation Arrows - Only show if more than 1 image */}
-                        {news.images.length > 1 && (
+                        {/* Navigation Arrows - Only show if more than 1 media item */}
+                        {(news.images.length + (news.videos ? news.videos.length : 0)) > 1 && (
                             <>
                                 {/* Left Arrow */}
                                 {currentImageIndex > 0 && (
@@ -139,7 +323,7 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                                 )}
                                 
                                 {/* Right Arrow */}
-                                {currentImageIndex < news.images.length - 1 && (
+                                {currentImageIndex < (news.images.length + (news.videos ? news.videos.length : 0)) - 1 && (
                                     <TouchableOpacity 
                                         style={styles.rightArrow}
                                         onPress={handleScrollRight}
@@ -151,28 +335,32 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                             </>
                         )}
                         
-                        {/* Image Counter */}
-                        {news.images.length > 1 && (
+                        {/* Media Counter - Hide when video is playing */}
+                        {(news.images.length + (news.videos ? news.videos.length : 0)) > 1 && playingVideo === null && (
                             <View style={styles.imageCounter}>
                                 <Icon name="image" size={14} color={theme.colors.background.primary} />
                                 <Text style={styles.imageCounterText}>
-                                    {news.images.length}
+                                    {news.images.length + (news.videos ? news.videos.length : 0)}
                                 </Text>
                             </View>
                         )}
                         
-                        {/* Category Badge */}
-                        <View style={[styles.categoryBadge, {
-                            backgroundColor: `${theme.colors.warning[500]}95`,
-                        }]}>
-                            <Text style={styles.categoryText}>{news.category?.name}</Text>
-                        </View>
+                        {/* Category Badge - Hide when video is playing */}
+                        {playingVideo === null && (
+                            <View style={[styles.categoryBadge, {
+                                backgroundColor: `${theme.colors.warning[500]}95`,
+                            }]}>
+                                <Text style={styles.categoryText}>{news.category?.name}</Text>
+                            </View>
+                        )}
                         
-                        {/* Views Badge */}
-                        <View style={styles.viewsBadge}>
-                            <Icon name="eye" size={16} color={theme.colors.text.primary} />
-                            <Text style={styles.viewsText}>{news.views_count}</Text>
-                        </View>
+                        {/* Views Badge - Hide when video is playing */}
+                        {playingVideo === null && (
+                            <View style={styles.viewsBadge}>
+                                <Icon name="eye" size={16} color={theme.colors.text.primary} />
+                                <Text style={styles.viewsText}>{news.views_count}</Text>
+                            </View>
+                        )}
                     </View>
                 )}
 
@@ -219,50 +407,65 @@ export const NewsDetailsScreen: React.FC<Props> = ({ route }) => {
                         </View>
                     </View>
 
-                    {/* Media Section */}
-                    {news.videos && news.videos.length > 0 && (
-                        <View style={styles.mediaSection}>
-                            {/* Videos */}
-                            <View style={styles.mediaSubSection}>
-                                <Text style={styles.sectionTitle}>{t('videos')}</Text>
-                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
-                                    {news.videos.map((video) => (
-                                        <TouchableOpacity key={video.id} style={styles.mediaItem}>
-                                            <View style={styles.videoPlaceholder}>
-                                                <Icon name="play" size={32} color={theme.colors.background.primary} />
-                                            </View>
-                                            {video.title && (
-                                                <Text style={styles.videoTitle} numberOfLines={2}>
-                                                    {video.title}
-                                                </Text>
-                                            )}
-                                        </TouchableOpacity>
-                                    ))}
-                                </ScrollView>
-                            </View>
-                        </View>
-                    )}
+                    {/* Media Section - Videos now integrated in hero section */}
 
                     {/* Documents Section */}
                     {news.documents && news.documents.length > 0 && (
                         <View style={styles.documentsSection}>
                             <Text style={styles.sectionTitle}>{t('attachments')}</Text>
                             {news.documents.map((doc) => (
-                                <TouchableOpacity key={doc.id} style={styles.documentCard}>
+                                <TouchableOpacity 
+                                    key={doc.id} 
+                                    style={styles.documentCard}
+                                    onPress={() => handleOpenDocument(doc.url, doc.title)}
+                                    activeOpacity={0.7}
+                                >
                                     <View style={[styles.infoIconContainer, { backgroundColor: `${theme.colors.error[500]}15` }]}>
                                         <Icon name="fileText" size={20} color={theme.colors.error[500]} />
                                     </View>
                                     <View style={styles.infoContent}>
                                         <Text style={styles.infoValue}>{doc.title}</Text>
-                                        <Text style={styles.infoLabel}>{doc.size}</Text>
+                                        <Text style={styles.infoLabel}>{doc.size || t('document')}</Text>
                                     </View>
-                                    <Icon name="download" size={20} color={theme.colors.text.tertiary} />
+                                    <Icon name="externalLink" size={20} color={theme.colors.text.tertiary} />
                                 </TouchableOpacity>
                             ))}
                         </View>
                     )}
                 </View>
             </ScrollView>
+
+            {/* Fullscreen Video Modal */}
+            <Modal
+                visible={fullscreenVideo !== null}
+                animationType="fade"
+                supportedOrientations={['portrait', 'landscape']}
+                onRequestClose={() => setFullscreenVideo(null)}
+            >
+                <View style={styles.fullscreenContainer}>
+                    {fullscreenVideo && news?.videos?.find(v => v.id === fullscreenVideo) && (
+                        <Video
+                            source={{ uri: news.videos.find(v => v.id === fullscreenVideo)!.url }}
+                            style={styles.fullscreenVideo}
+                            useNativeControls
+                            resizeMode={ResizeMode.CONTAIN}
+                            shouldPlay
+                            onPlaybackStatusUpdate={(status) => {
+                                if (status.isLoaded && status.didJustFinish) {
+                                    setFullscreenVideo(null);
+                                }
+                            }}
+                        />
+                    )}
+                    <TouchableOpacity 
+                        style={styles.closeButton}
+                        onPress={() => setFullscreenVideo(null)}
+                        activeOpacity={0.7}
+                    >
+                        <Icon name="x" size={24} color={theme.colors.background.primary} />
+                    </TouchableOpacity>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -304,6 +507,30 @@ const styles = StyleSheet.create({
     heroImage: {
         width: Dimensions.get('window').width,
         height: '100%',
+    },
+    videoContainer: {
+        width: Dimensions.get('window').width,
+        height: '100%',
+        backgroundColor: theme.colors.text.secondary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+    },
+    videoTitleOverlay: {
+        position: 'absolute',
+        bottom: 60,
+        left: 20,
+        right: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        paddingHorizontal: theme.spacing[3],
+        paddingVertical: theme.spacing[2],
+        borderRadius: theme.borderRadius.lg,
+    },
+    videoTitleText: {
+        fontSize: theme.typography.sizes.base,
+        fontFamily: theme.typography.fonts.medium,
+        color: theme.colors.background.primary,
+        textAlign: 'center',
     },
     heroGradient: {
         position: 'absolute',
@@ -481,12 +708,111 @@ const styles = StyleSheet.create({
         borderRadius: theme.borderRadius.xl,
     },
     videoPlaceholder: {
-        width: 200,
-        height: 140,
-        backgroundColor: theme.colors.text.secondary,
-        borderRadius: theme.borderRadius.xl,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    videoPlayer: {
+        width: Dimensions.get('window').width,
+        height: 280,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+    },
+    videoControlsOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        paddingHorizontal: theme.spacing[4],
+        paddingVertical: theme.spacing[3],
+        zIndex: 2000,
+    },
+    videoPlayerContainer: {
+        width: Dimensions.get('window').width,
+        height: 280,
+        position: 'relative',
+    },
+    videoControls: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        paddingHorizontal: theme.spacing[4],
+        paddingVertical: theme.spacing[3],
+        zIndex: 1000,
+    },
+    playPauseButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: theme.spacing[3],
+    },
+    progressContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginRight: theme.spacing[3],
+    },
+    timeText: {
+        fontSize: theme.typography.sizes.xs,
+        color: theme.colors.background.primary,
+        fontFamily: theme.typography.fonts.medium,
+        minWidth: 35,
+        textAlign: 'center',
+    },
+    progressBar: {
+        flex: 1,
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 2,
+        marginHorizontal: theme.spacing[2],
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: theme.colors.warning[500],
+        borderRadius: 2,
+    },
+    fullscreenButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullscreenContainer: {
+        flex: 1,
+        backgroundColor: '#000',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullscreenVideo: {
+        width: '100%',
+        height: '100%',
+    },
+    closeButton: {
+        position: 'absolute',
+        top: 50,
+        right: 20,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1001,
     },
     videoTitle: {
         fontSize: theme.typography.sizes.sm,

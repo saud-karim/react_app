@@ -342,6 +342,11 @@ const iconPaths: Record<string, React.ReactNode> = {
       <Rect x="14" y="4" width="4" height="16" />
     </>
   ),
+  maximize: (
+    <>
+      <Path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+    </>
+  ),
   volume: (
     <>
       <Polygon points="11,5 6,9 2,9 2,15 6,15 11,19" />

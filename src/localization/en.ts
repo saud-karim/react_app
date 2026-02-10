@@ -74,6 +74,8 @@ export default {
     newsDetails: 'News Details',
     views: 'views',
     publishedAt: 'Published at',
+    attachments: 'Attachments',
+    document: 'Document',
 
     // Notifications
     markAsRead: 'Mark as Read',
