@@ -92,6 +92,9 @@ export default {
     passwordChanged: 'Password changed successfully',
     uploadAvatar: 'Upload Photo',
     deleteAvatar: 'Delete Photo',
+    profilePicture: 'Profile Picture',
+    success: 'Success',
+    somethingWentWrong: 'Something went wrong',
     logoutConfirm: 'Are you sure you want to logout?',
     changeAvatarSoon: 'Coming soon... Change profile picture',
 

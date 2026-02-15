@@ -10,6 +10,7 @@ interface AuthContextType {
     register: (data: RegisterRequest) => Promise<{ success: boolean; message: string }>;
     logout: () => Promise<void>;
     refreshProfile: () => Promise<void>;
+    updateUser: (userData: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -106,6 +107,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
+    const updateUser = (userData: Partial<User>) => {
+        setUser(prevUser => prevUser ? { ...prevUser, ...userData } : null);
+    };
+
     return (
         <AuthContext.Provider
             value={{
@@ -116,6 +121,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 register,
                 logout,
                 refreshProfile,
+                updateUser,
             }}
         >
             {children}

@@ -10,18 +10,21 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { changeLanguage } from '../localization/i18n';
 import i18n from '../localization/i18n';
 import { cacheService } from '../services/cacheService';
+import { profileService } from '../api/profileService';
 import { theme } from '../theme';
 import { Icon } from '../components/icons/Icon';
 
 export const ProfileScreen: React.FC = () => {
     const { t, i18n } = useTranslation();
-    const { user, logout } = useAuth();
+    const { user, logout, updateUser } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     const [currentLanguage, setCurrentLanguage] = useState(i18n.language);
 
     // Update current language when i18n language changes
@@ -95,6 +98,103 @@ export const ProfileScreen: React.FC = () => {
         );
     };
 
+    const handlePickImage = async () => {
+        try {
+            // Request permission
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            
+            if (status !== 'granted') {
+                Alert.alert(
+                    t('error'),
+                    i18n.language === 'ar' 
+                        ? 'نحتاج إلى إذن للوصول إلى معرض الصور'
+                        : 'We need permission to access your photo library'
+                );
+                return;
+            }
+
+            // Pick image
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets[0]) {
+                await handleUploadAvatar(result.assets[0].uri);
+            }
+        } catch (error) {
+            console.error('Error picking image:', error);
+            Alert.alert(t('error'), t('somethingWentWrong'));
+        }
+    };
+
+    const handleUploadAvatar = async (imageUri: string) => {
+        setIsUploadingAvatar(true);
+        try {
+            const response = await profileService.uploadAvatar(imageUri);
+            
+            if (response.success) {
+                // Update user in context
+                if (updateUser && response.data.avatar_url) {
+                    updateUser({ ...user, avatar: response.data.avatar_url });
+                }
+                
+                Alert.alert(
+                    t('success'),
+                    i18n.language === 'ar' 
+                        ? 'تم رفع الصورة بنجاح'
+                        : 'Avatar uploaded successfully'
+                );
+            }
+        } catch (error: any) {
+            console.error('Error uploading avatar:', error);
+            Alert.alert(
+                t('error'),
+                error.response?.data?.message || t('somethingWentWrong')
+            );
+        } finally {
+            setIsUploadingAvatar(false);
+        }
+    };
+
+    const handleDeleteAvatar = () => {
+        Alert.alert(
+            t('deleteAvatar'),
+            i18n.language === 'ar' 
+                ? 'هل أنت متأكد من حذف صورة الملف الشخصي؟'
+                : 'Are you sure you want to delete your profile picture?',
+            [
+                { text: t('cancel'), style: 'cancel' },
+                { 
+                    text: t('delete'), 
+                    style: 'destructive',
+                    onPress: async () => {
+                        setIsUploadingAvatar(true);
+                        try {
+                            const response = await profileService.deleteAvatar();
+                            
+                            if (response.success && updateUser) {
+                                updateUser({ ...user, avatar: null });
+                                Alert.alert(
+                                    t('success'),
+                                    i18n.language === 'ar' 
+                                        ? 'تم حذف الصورة بنجاح'
+                                        : 'Avatar deleted successfully'
+                                );
+                            }
+                        } catch (error) {
+                            console.error('Error deleting avatar:', error);
+                            Alert.alert(t('error'), t('somethingWentWrong'));
+                        } finally {
+                            setIsUploadingAvatar(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
     const stats = [
         { label: t('registeredEvents'), value: '12', icon: 'calendar', color: theme.colors.primary[500] },
         { label: t('usedDeals'), value: '8', icon: 'gift', color: theme.colors.success[500] },
@@ -167,9 +267,34 @@ export const ProfileScreen: React.FC = () => {
                     <View style={styles.profileContent}>
                         <TouchableOpacity
                             style={styles.avatarContainer}
+                            onPress={() => {
+                                Alert.alert(
+                                    t('profilePicture'),
+                                    i18n.language === 'ar' ? 'اختر خياراً' : 'Choose an option',
+                                    [
+                                        {
+                                            text: i18n.language === 'ar' ? 'اختيار صورة' : 'Choose Photo',
+                                            onPress: handlePickImage
+                                        },
+                                        ...(user?.avatar ? [{
+                                            text: t('delete'),
+                                            style: 'destructive' as const,
+                                            onPress: handleDeleteAvatar
+                                        }] : []),
+                                        {
+                                            text: t('cancel'),
+                                            style: 'cancel' as const
+                                        }
+                                    ]
+                                );
+                            }}
                             activeOpacity={0.8}
                         >
-                            {user?.avatar ? (
+                            {isUploadingAvatar ? (
+                                <View style={styles.avatarPlaceholder}>
+                                    <ActivityIndicator size="large" color={theme.colors.primary[500]} />
+                                </View>
+                            ) : user?.avatar ? (
                                 <Image source={{ uri: user.avatar }} style={styles.avatar} />
                             ) : (
                                 <View style={styles.avatarPlaceholder}>

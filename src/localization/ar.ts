@@ -138,6 +138,9 @@ export default {
     passwordChanged: 'تم تغيير كلمة المرور بنجاح',
     uploadAvatar: 'تحميل صورة',
     deleteAvatar: 'حذف الصورة',
+    profilePicture: 'صورة الملف الشخصي',
+    success: 'نجح',
+    somethingWentWrong: 'حدث خطأ ما',
     logoutConfirm: 'هل أنت متأكد من تسجيل الخروج؟',
     changeAvatarSoon: 'قريباً... تغيير الصورة الشخصية',
 
